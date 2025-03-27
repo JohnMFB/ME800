@@ -22,4 +22,14 @@ Tello Setup
 Hotspot: Tello-CBF1B9
 Default IP: 192.168.10.1
 
-### Trying again with Windows Anaconda
+### Trying again with Windows Anaconda (Personal Computer Only)
+- Download Anaconda & Git
+- Setup Git Bash
+conda init bash (Within Anavonda Navigator)
+Reopen Bash
+
+conda create -n python3.9 python=3.9
+conda activate python3.9
+
+conda install opencv numpy
+pip install simple-pid djitellopy
