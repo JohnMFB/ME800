@@ -16,12 +16,14 @@ Activating Env:
 source env/bin/activate
 
 Python Packages Within Shared env:
-pip install djitellopy opencv-python numpy simple-pid
+
 
 Tello Setup
 Hotspot: Tello-CBF1B9
 Default IP: 192.168.10.1
 
+<details>
+<summary>No Longer Needed Steps</summary>
 ### Trying again with Windows Anaconda (Personal Computer Only)
 - Download Anaconda & Git
 - Setup Git Bash
@@ -33,3 +35,5 @@ conda activate python3.9
 
 conda install opencv numpy
 pip install simple-pid djitellopy
+
+</details>
