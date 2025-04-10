@@ -37,3 +37,4 @@ conda install opencv numpy
 pip install simple-pid djitellopy
 
 </details>
+
