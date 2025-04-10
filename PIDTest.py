@@ -1,21 +1,19 @@
 import threading
 import socket
 import time
+import math
 
 # Global state dictionary to hold current Tello state.
-current_state = {'x': 0, 'y': 0, 'z': 0}
+current_state = {'x': 0, 'y': 0, 'z': 0, 'yaw': 0}
 
-# Global variable for the target (desired) position.
-target_state = None
-
-# Tello Setup
+# Tello setup
 TELLO_IP = '192.168.10.1'
 TELLO_CMD_PORT = 8889
 COMMAND_ADDRESS = (TELLO_IP, TELLO_CMD_PORT)
 
 # Socket for sending commands.
 cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-cmd_sock.bind(('', 9000))  # Local binding, adjust port as needed
+cmd_sock.bind(('', 9000))  # Local binding; adjust port as needed
 
 # Socket for receiving state feedback.
 state_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -37,91 +35,129 @@ def state_receiver():
                 if part:
                     try:
                         key, value = part.split(':')
-                        # Capture altitude (h) and mission pad coordinates (if available)
                         if key == 'h':
                             current_state['z'] = int(value)
                         elif key in ['x', 'y']:
                             current_state[key] = int(value)
+                        elif key == 'yaw':
+                            current_state['yaw'] = int(value)
                     except Exception as e:
                         print("Parsing error:", e)
-            # Optionally print current state for debugging purposes
             print("Current State:", current_state)
         except Exception as e:
             print("State receiver error:", e)
             break
 
-def interactive_loop():
-    """Interactive loop to capture or input target positions repeatedly."""
-    global target_state
+def normalize_angle(angle):
+    """Normalize angle to the range [-180, 180] degrees."""
+    while angle > 180:
+        angle -= 360
+    while angle < -180:
+        angle += 360
+    return angle
 
+def interactive_loop():
+    """
+    Interactive loop to set a relative displacement.
+    The drone:
+      1. Reads a target displacement (dx, dy, dz in cm).
+      2. Computes the desired heading (angle) to the target.
+      3. Rotates to face the target direction, waits until rotation is complete.
+      4. Moves forward the computed horizontal distance and adjusts altitude.
+      5. Rotates back to its original heading.
+    """
     while True:
         print("\n--- Interactive Command ---")
         print("Options:")
-        print("   c  : Capture current position as the target")
-        print("   m  : Manually input target coordinates (x y z in cm)")
+        print("   m  : Manually input a relative target displacement (dx dy dz in cm)")
+        print("         (dx,dy define horizontal displacement; dz is altitude change)")
         print("   q  : Quit and land")
-        user_input = input("Enter your choice (c/m/q): ").strip().lower()
-
-        if user_input == 'q':
+        choice = input("Enter your choice (m/q): ").strip().lower()
+        if choice == 'q':
             break
-        elif user_input == 'c':
-            # Capture the live current state as the target position.
-            target_state = current_state.copy()
-            print("Captured Target Position:", target_state)
-        elif user_input == 'm':
+        elif choice == 'm':
             try:
-                coords = input("Enter target coordinates as x y z (in cm): ").strip()
-                x, y, z = map(int, coords.split())
-                target_state = {'x': x, 'y': y, 'z': z}
-                print("Manually set Target Position:", target_state)
+                coords = input("Enter target displacement as dx dy dz (in cm): ").strip()
+                dx, dy, dz = map(int, coords.split())
+                rel_target = {'dx': dx, 'dy': dy, 'dz': dz}
+                print("Manually set Relative Target:", rel_target)
             except Exception as e:
                 print("Invalid input. Please enter three integer values separated by spaces.")
                 continue
         else:
-            print("Invalid option. Please try again.")
+            print("Invalid option. Try again.")
             continue
 
-        # Check that target_state is set; if not, warn the user.
-        if target_state is None:
-            print("No target position defined. Please capture or input a target.")
-            continue
+        # Capture the starting state.
+        start_state = current_state.copy()
+        original_yaw = start_state.get('yaw', 0)
+        
+        # Compute the desired heading angle from relative displacement.
+        if rel_target['dx'] == 0 and rel_target['dy'] == 0:
+            desired_heading = original_yaw
+            horizontal_distance = 0
+        else:
+            desired_heading = math.degrees(math.atan2(rel_target['dy'], rel_target['dx']))
+            horizontal_distance = int(round(math.sqrt(rel_target['dx']**2 + rel_target['dy']**2)))
+        yaw_change = normalize_angle(desired_heading - original_yaw)
+        
+        print("Original Yaw:", original_yaw)
+        print("Desired Heading:", desired_heading)
+        print("Yaw Change:", yaw_change)
+        print("Horizontal Distance to move:", horizontal_distance)
 
-        # Prepare the "go" command.
-        # Note: 'go x y z speed' is more effective with mission pad detection.
-        speed = 20  # Example speed in cm/s; adjust if needed.
-        command_to_go = "go {} {} {} {}".format(
-            target_state.get('x', 0),
-            target_state.get('y', 0),
-            target_state.get('z', 0),
-            speed
-        )
-        print("Commanding drone to go to the target position...")
-        send_command(command_to_go)
+        # Rotate to face the target.
+        if yaw_change > 0:
+            send_command("cw {}".format(int(round(yaw_change))))
+        elif yaw_change < 0:
+            send_command("ccw {}".format(int(round(abs(yaw_change)))))
 
-        # Optionally, wait here until the drone should have reached the target.
-        # This wait time depends on the distance and your speed.
-        time.sleep(10)
+        # Delay for the drone to complete the rotation.
+        time.sleep(2)
 
-        # Reset the target_state to avoid using stale data.
-        target_state = None
+        # Move forward by the calculated horizontal distance.
+        if horizontal_distance > 0:
+            send_command("forward {}".format(horizontal_distance))
+        
+        # Adjust altitude based on dz.
+        if rel_target['dz'] > 0:
+            send_command("up {}".format(rel_target['dz']))
+        elif rel_target['dz'] < 0:
+            send_command("down {}".format(abs(rel_target['dz'])))
+        
+        # Wait for the forward/altitude movement to complete.
+        time.sleep(5)
+        
+        # Rotate back to the original orientation.
+        if yaw_change > 0:
+            send_command("ccw {}".format(int(round(yaw_change))))
+        elif yaw_change < 0:
+            send_command("cw {}".format(int(round(abs(yaw_change)))))
+        
+        # Allow a short delay after rotating back.
+        time.sleep(2)
 
 def main():
-    # Start state receiver thread.
+    # Start the state receiver thread.
     state_thread = threading.Thread(target=state_receiver, daemon=True)
     state_thread.start()
 
     # Enter SDK mode.
     send_command("command")
     time.sleep(1)
-
+    
+    # Optionally: enable mission pad detection if available with:
+    # send_command("mon")
+    # time.sleep(2)
+    
     # Take off.
     send_command("takeoff")
     time.sleep(5)  # Allow time to stabilize.
 
-    # Enter interactive loop.
+    # Enter the interactive loop for relative movement.
     interactive_loop()
 
-    # Land when done.
+    # Land.
     send_command("land")
     cmd_sock.close()
     state_sock.close()
