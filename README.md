@@ -2,21 +2,36 @@
 Tello Drone PID/L1 Adaptive Controller Project
 
 #### Setup
+(SET TO WSL 1)
 - WSL, SSH, VSCode, Git Clone, ...
 - Python
 Creating
+https://sourceforge.net/projects/vcxsrv/files/latest/download
+- Check Lighter Security
+export DISPLAY=:0
+echo $DISPLAY
+
+mkdir -p /tmp/runtime-$(whoami)
+export XDG_RUNTIME_DIR=/tmp/runtime-$(whoami)
+echo $XDG_RUNTIME_DIR
+
+ffplay -i udp://@:11111 (Testing Camera)
 
 WSL Dependencies (Install in each device):
 sudo apt install python3 python3-pip python3-venv -y
+sudo apt install ffmpeg libsm6 libxext6
+
+
+sudo apt update
+sudo apt upgrade
 
 Github Env:
-python3 -m venv env
-
-Activating Env:
-source env/bin/activate
+python3 -m venv Tello
+Activating Tello:
+source Tello/bin/activate
 
 Python Packages Within Shared env:
-
+cv2
 
 Tello Setup
 Hotspot: Tello-CBF1B9

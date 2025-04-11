@@ -97,7 +97,7 @@ def interactive_loop():
         elif yaw_change < 0:
             send_command("ccw {}".format(int(round(abs(yaw_change)))))
 
-        time.sleep(2) # Required Delay
+        time.sleep(5) # Required Delay
 
         if horizontal_distance > 0:
             send_command("forward {}".format(horizontal_distance))
