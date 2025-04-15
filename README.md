@@ -21,7 +21,6 @@ WSL Dependencies (Install in each device):
 sudo apt install python3 python3-pip python3-venv -y
 sudo apt install ffmpeg libsm6 libxext6
 
-
 sudo apt update
 sudo apt upgrade
 
@@ -36,6 +35,14 @@ cv2
 Tello Setup
 Hotspot: Tello-CBF1B9
 Default IP: 192.168.10.1
+
+# Python3 or python for with_camera.py
+# python for tellomain.py?
+
+
+
+
+
 
 <details>
 <summary>No Longer Needed Steps</summary>
