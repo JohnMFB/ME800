@@ -45,7 +45,12 @@ pip install --upgrade pip
 
 ## Install Python Packages
 
-pip install opencv-python                             
+pip install opencv-python                
+
+* For aruco, opencv-contrib-python needed
+pip uninstall opencv-python
+pip install opencv-contrib-python
+
 
 # CPU‑only PyTorch + audio support
 pip install torch torchvision torchaudio \
