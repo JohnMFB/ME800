@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import getpass
 import argparse
@@ -13,9 +12,6 @@ from ultralytics import YOLO
 import matplotlib.pyplot as plt
 from matplotlib.backends.backend_pdf import PdfPages
 
-# -----------------------------------------------------------------------------
-# 1) Argument parsing
-# -----------------------------------------------------------------------------
 parser = argparse.ArgumentParser(
     description="Tello Drone YOLOv8 Person Tracking with ArUco Boundary")
 default_runtime = f"/tmp/runtime-{getpass.getuser()}"
@@ -37,16 +33,10 @@ parser.add_argument("--pid-delay", type=float, default=0.05,
                     help="Delay (s) between PID loop iterations")
 args = parser.parse_args()
 
-# -----------------------------------------------------------------------------
-# 2) Display/runtime setup
-# -----------------------------------------------------------------------------
 os.environ["DISPLAY"] = ":0"
 os.makedirs(args.xdg_runtime_dir, exist_ok=True)
 os.environ["XDG_RUNTIME_DIR"] = args.xdg_runtime_dir
 
-# -----------------------------------------------------------------------------
-# 3) Tello networking & commands
-# -----------------------------------------------------------------------------
 TELLO_IP, TELLO_CMD_PORT = "192.168.10.1", 8889
 cmd_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 cmd_sock.bind(("", 9000))
@@ -61,28 +51,19 @@ def send_rc(lr, fb, ud, yaw):
     """Send rc control (keeps drone alive too)."""
     send_command(f"rc {lr} {fb} {ud} {yaw}")
 
-# -----------------------------------------------------------------------------
-# 4) Keep-alive thread (prevents auto-land after 15s) :contentReference[oaicite:4]{index=4}
-# -----------------------------------------------------------------------------
 _stop_event = threading.Event()
 def keepalive():
     while not _stop_event.is_set():
         send_command("command")
         time.sleep(5)
 
-# -----------------------------------------------------------------------------
-# 5) Load camera calibration & ArUco parameters
-# -----------------------------------------------------------------------------
-calib = np.load("calibration.npz")  # must be precomputed
+calib = np.load("calibration.npz")  
 cam_mtx, dist_coefs = calib["camera_matrix"], calib["dist_coefs"]
 aruco_dict   = aruco.getPredefinedDictionary(aruco.DICT_6X6_50)
 aruco_params = aruco.DetectorParameters()
-aruco_params.adaptiveThreshWinSizeMax = 50     # boost detection robustness
+aruco_params.adaptiveThreshWinSizeMax = 50   
 aruco_params.errorCorrectionRate     = 0.8
 
-# -----------------------------------------------------------------------------
-# 6) Frame capture thread
-# -----------------------------------------------------------------------------
 _frame_lock   = threading.Lock()
 _latest_frame = None
 
@@ -101,17 +82,12 @@ def get_frame():
     with _frame_lock:
         return None if _latest_frame is None else _latest_frame.copy()
 
-# -----------------------------------------------------------------------------
-# 7) Marker scanning helper
-# -----------------------------------------------------------------------------
+
 def scan_marker(mid):
-    """
-    Spin the drone until marker `mid` is centered within ±center-thresh px,
-    then average `stability_frames` pose estimates and return (x_m, z_m).
-    """
+
     IMG_W, IMG_H = 640, 480
     start = time.time()
-    send_rc(0, 0, 0, args.scan_yaw_speed)  # continuous yaw :contentReference[oaicite:5]{index=5}
+    send_rc(0, 0, 0, args.scan_yaw_speed) 
     stable = []
 
     while time.time() - start < args.scan_timeout:
@@ -120,8 +96,8 @@ def scan_marker(mid):
             time.sleep(0.02)
             continue
 
-        cv2.imshow("Tello Markers", frame)    # show for debugging :contentReference[oaicite:6]{index=6}
-        cv2.waitKey(1)                        # required for imshow refresh :contentReference[oaicite:7]{index=7}
+        cv2.imshow("Tello Markers", frame)  
+        cv2.waitKey(1)                      
 
         gray = cv2.cvtColor(cv2.resize(frame,(IMG_W,IMG_H)), cv2.COLOR_BGR2GRAY)
         corners, ids, _ = aruco.detectMarkers(gray, aruco_dict, parameters=aruco_params)
@@ -136,21 +112,17 @@ def scan_marker(mid):
                     break
         time.sleep(0.02)
 
-    send_rc(0, 0, 0, 0)  # stop yaw
+    send_rc(0, 0, 0, 0)
     if not stable:
         raise RuntimeError(f"Marker {mid} scan failed")
     avg = np.mean(stable, axis=0)
     return float(avg[0]), float(avg[2])
 
-# -----------------------------------------------------------------------------
-# 8) Boundary plot: save PNG & PDF
-# -----------------------------------------------------------------------------
 def save_boundary_plots(boundary,
                         png_path="boundary.png",
                         pdf_path="boundary.pdf"):
     x_min, x_max, z_min, z_max = boundary
 
-    # OpenCV PNG
     scale, m = 200, 50
     w = int((x_max - x_min)*scale) + 2*m
     h = int((z_max - z_min)*scale) + 2*m
@@ -164,7 +136,6 @@ def save_boundary_plots(boundary,
     cv2.polylines(img, [pts], True, (0,0,0), 2)
     cv2.imwrite(png_path, img)
 
-    # Matplotlib PDF :contentReference[oaicite:8]{index=8}
     fig, ax = plt.subplots()
     corners = [(x_min,z_max),(x_min,z_min),(x_max,z_min),(x_max,z_max)]
     poly = plt.Polygon(corners, closed=True, fill=None, edgecolor='black')
@@ -178,38 +149,31 @@ def save_boundary_plots(boundary,
         pdf.savefig(fig)
     plt.close(fig)
 
-# -----------------------------------------------------------------------------
-# 9) Main video & scanning thread
-# -----------------------------------------------------------------------------
 def video_thread():
-    # 9.1 Enter SDK & enable stream :contentReference[oaicite:9]{index=9}
     send_command("command")
     send_command("streamon")
-    time.sleep(2)  # wait for H.264 encoder :contentReference[oaicite:10]{index=10}
+    time.sleep(2)  
 
-    # 9.2 Open capture & verify :contentReference[oaicite:11]{index=11}
     cap = cv2.VideoCapture("udp://@:11111", apiPreference=cv2.CAP_FFMPEG)
     if not cap.isOpened():
         print("[ERROR] Video stream failed")
         _stop_event.set()
         return
 
-    # 9.3 Take off now that video is live :contentReference[oaicite:12]{index=12}
-    send_command("takeoff")
-    time.sleep(3)  # allow stabilization
 
-    # 9.4 Start frame capture
+    send_command("takeoff")
+    time.sleep(3) 
+
     threading.Thread(target=capture_thread, args=(cap,), daemon=True).start()
     cv2.namedWindow("Tello Markers", cv2.WINDOW_NORMAL)
 
-    # 9.5 Scan markers 1→4
     positions = {}
     for mid in range(1, args.num_markers+1):
         x_m, z_m = scan_marker(mid)
         positions[mid] = (x_m, z_m)
         print(f"[LOCK] Marker#{mid}: x={x_m:.2f}, z={z_m:.2f}")
 
-    # 9.6 Compute inset boundary (ensure x_min<x_max, z_min<z_max) :contentReference[oaicite:13]{index=13}
+
     xs = [p[0] for p in positions.values()]
     zs = [p[1] for p in positions.values()]
     inset = 0.3048
@@ -218,35 +182,29 @@ def video_thread():
     boundary = (x_min, x_max, z_min, z_max)
     print(f"[BOUNDARY] x[{x_min:.2f},{x_max:.2f}] z[{z_min:.2f},{z_max:.2f}]")
 
-    # 9.7 Save boundary visuals
+
     save_boundary_plots(boundary)
 
-    # 9.8 Fly rectangle CCW inside the inset boundary
+
     corners = [(x_min,z_min),(x_min,z_max),(x_max,z_max),(x_max,z_min)]
     for xm, zm in corners:
         send_command(f"go {int(xm*100)} {int(zm*100)} 0 20")
         time.sleep(5)
 
-    # 9.9 Return to center
+
     cx = int(((x_min + x_max)/2)*100)
     cz = int(((z_min + z_max)/2)*100)
     send_command(f"go {cx} {cz} 0 20")
     time.sleep(5)
 
-    # 9.10 Start person-tracking PID (unchanged)
+
     threading.Thread(target=inference_thread,
                      args=(YOLO("yolov8n.pt"),), daemon=True).start()
 
-# -----------------------------------------------------------------------------
-# 10) PID person-tracking (your existing code)
-# -----------------------------------------------------------------------------
+
 def inference_thread(model):
     cv2.namedWindow("Tello YOLOv8", cv2.WINDOW_NORMAL)
-    # … your PID loop here …
 
-# -----------------------------------------------------------------------------
-# 11) Entry point
-# -----------------------------------------------------------------------------
 if __name__ == "__main__":
     threading.Thread(target=keepalive, daemon=True).start()
     threading.Thread(target=video_thread, daemon=True).start()

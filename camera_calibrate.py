@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import getpass
 import argparse
@@ -8,7 +7,6 @@ import time
 import cv2
 import numpy as np
 
-# ---- 1) Argument Parsing (including XDG_RUNTIME_DIR) ----
 parser = argparse.ArgumentParser(
     description="Tello Drone Camera Calibration (Chessboard Marker)"
 )
@@ -22,7 +20,7 @@ parser.add_argument(
     "--num-frames", type=int, default=20,
     help="Number of calibration frames to capture"
 )
-# Default to 9x6 if using the OpenCV doc pattern.png (9 cols, 6 rows)
+
 parser.add_argument(
     "--pattern-size", type=int, nargs=2, default=[9,6],
     help="Chessboard pattern inner corners: columns rows (e.g. 9 6)"
@@ -33,12 +31,10 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# ---- 2) Ensure DISPLAY and XDG_RUNTIME_DIR for OpenCV GUI ----
 os.environ["DISPLAY"] = ":0"
 os.makedirs(args.xdg_runtime_dir, exist_ok=True)
 os.environ["XDG_RUNTIME_DIR"] = args.xdg_runtime_dir
 
-# ---- 3) Networking Setup for Tello ----
 TELLO_IP = "192.168.10.1"
 TELLO_CMD_PORT = 8889
 COMMAND_ADDRESS = (TELLO_IP, TELLO_CMD_PORT)
@@ -51,15 +47,13 @@ def send_command(cmd: str):
     cmd_sock.sendto(cmd.encode("utf-8"), COMMAND_ADDRESS)
     time.sleep(0.05)
 
-# ---- 4) Shared State ----
 _frame_lock   = threading.Lock()
 _latest_frame = None
 _stop_event   = threading.Event()
 
-# ---- 5) Frame Capture Thread ----
 def capture_thread():
     global _latest_frame
-    # give the drone time to start streaming
+
     time.sleep(2.0)
     cap = cv2.VideoCapture("udp://@:11111", cv2.CAP_FFMPEG)
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -80,15 +74,12 @@ def capture_thread():
     cap.release()
     print("[CAPTURE] Exiting")
 
-# ---- 6) Calibration Loop ----
 def main():
-    # Enter SDK mode and start video
     send_command("command")
     time.sleep(1)
     send_command("streamon")
     time.sleep(2)
 
-    # Prepare object points for chessboard
     cols, rows = args.pattern_size
     objp = np.zeros((rows*cols, 3), np.float32)
     objp[:, :2] = np.mgrid[0:cols, 0:rows].T.reshape(-1, 2)
@@ -148,7 +139,7 @@ def main():
         print(f"Only {len(objpoints)} frames captured; calibration aborted.")
 
 if __name__ == "__main__":
-    # Start video capture
+
     threading.Thread(target=capture_thread, daemon=True).start()
     try:
         main()

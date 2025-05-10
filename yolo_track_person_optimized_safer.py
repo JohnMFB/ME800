@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import getpass
 import argparse
@@ -9,7 +8,6 @@ import cv2
 import numpy as np
 from ultralytics import YOLO
 
-# ---- 1) Argument Parsing (including XDG_RUNTIME_DIR) ----
 parser = argparse.ArgumentParser(
     description="Tello Drone YOLOv8 Person Tracking with PID-friendly rc control"
 )
@@ -21,12 +19,10 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# ---- 2) Ensure DISPLAY and XDG_RUNTIME_DIR for OpenCV GUI ----
 os.environ["DISPLAY"] = ":0"
 os.makedirs(args.xdg_runtime_dir, exist_ok=True)
 os.environ["XDG_RUNTIME_DIR"] = args.xdg_runtime_dir
 
-# ---- 3) Networking Setup for Tello ----
 TELLO_IP = "192.168.10.1"
 TELLO_CMD_PORT = 8889
 COMMAND_ADDRESS = (TELLO_IP, TELLO_CMD_PORT)
@@ -38,24 +34,16 @@ state_sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
 state_sock.bind(("", 8890))
 
 def send_command(cmd: str):
-    """Send a single command to the Tello."""
-    print(f"→ CMD ▶ {cmd}")
+    print(f"-> CMD -> {cmd}")
     cmd_sock.sendto(cmd.encode("utf-8"), COMMAND_ADDRESS)
     time.sleep(0.05)
 
 def send_rc(lr: int, fb: int, ud: int, yaw: int):
-    """
-    Send continuous velocity command.
-    lr: left/right  (-100..100)
-    fb: forward/back(-100..100)
-    ud: up/down    (-100..100)
-    yaw: yaw       (-100..100)
-    """
+
     cmd = f"rc {lr} {fb} {ud} {yaw}"
     send_command(cmd)
 
 def state_receiver():
-    """Continuously receive and print Tello state messages."""
     while True:
         try:
             data, _ = state_sock.recvfrom(1024)
@@ -63,13 +51,11 @@ def state_receiver():
         except:
             break
 
-# ---- 4) Video Capture + Inference Threads ----
 _frame_lock = threading.Lock()
 _latest_frame = None
 _stop_event   = threading.Event()
 
 def capture_thread(cap):
-    """Grab only the latest frame to minimize latency."""
     global _latest_frame
     print("[CAPTURE] started")
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
@@ -84,20 +70,16 @@ def capture_thread(cap):
     print("[CAPTURE] exiting")
 
 def inference_thread(model):
-    """Run YOLO, compute PID control signals, and display."""
     print("[INFER ] started")
     cv2.namedWindow("Tello YOLOv8", cv2.WINDOW_NORMAL)
 
-    # Desired setpoints for detection ratios
-    DESIRED_WIDTH_RATIO = 0.60   # target person width = 60% of frame
-    DESIRED_TOP_RATIO   = 0.20   # target top of bbox at 20% down
+    DESIRED_WIDTH_RATIO = 0.60   
+    DESIRED_TOP_RATIO   = 0.20  
 
-    # ---- FASTER PID GAINS ----
     KP_YAW, KI_YAW, KD_YAW = 150.0, 0.2, 30.0
     KP_FB,  KI_FB,  KD_FB  = 120.0, 0.2, 25.0
     KP_UD,  KI_UD,  KD_UD  = 100.0, 0.2, 25.0
 
-    # Initialize PID state
     prev_err_yaw = prev_err_fb = prev_err_ud = 0.0
     int_err_yaw  = int_err_fb  = int_err_ud  = 0.0
     prev_time    = time.time()
@@ -137,7 +119,6 @@ def inference_thread(model):
         curr_time = time.time()
         dt = curr_time - prev_time if curr_time > prev_time else 1e-6
 
-        # --- PID: yaw ---
         cx = (x1 + x2) / 2
         err_yaw = (cx / W) - 0.5
         int_err_yaw += err_yaw * dt
@@ -147,7 +128,6 @@ def inference_thread(model):
                       KD_YAW * der_err_yaw)
         yaw = int(np.clip(yaw_output, -100, 100))
 
-        # --- PID: forward/back ---
         curr_ratio = box_w / W
         err_fb = DESIRED_WIDTH_RATIO - curr_ratio
         int_err_fb += err_fb * dt
@@ -157,7 +137,6 @@ def inference_thread(model):
                      KD_FB * der_err_fb)
         fb = int(np.clip(fb_output, -100, 100))
 
-        # --- PID: up/down ---
         err_ud = DESIRED_TOP_RATIO - (y1 / H)
         int_err_ud += err_ud * dt
         der_err_ud = (err_ud - prev_err_ud) / dt
@@ -199,7 +178,6 @@ def video_thread():
         time.sleep(0.1)
     print("[VIDEO ] exiting")
 
-# ---- 5) Main Routine ----
 def main():
     print("[MAIN ] starting state receiver")
     threading.Thread(target=state_receiver, daemon=True).start()

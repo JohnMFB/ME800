@@ -1,4 +1,3 @@
-#!/usr/bin/env python3
 import os
 import getpass
 import argparse
@@ -8,7 +7,6 @@ import time
 import cv2
 from ultralytics import YOLO
 
-# ---- 1) Argument Parsing (including XDG_RUNTIME_DIR) ----
 parser = argparse.ArgumentParser(
     description="Tello Drone YOLOv8 Person Tracking"
 )
@@ -20,7 +18,6 @@ parser.add_argument(
 )
 args = parser.parse_args()
 
-# ---- 2) Ensure DISPLAY and XDG_RUNTIME_DIR for OpenCV GUI ----
 print("1) Ensuring DISPLAY for OpenCV GUI")
 os.environ["DISPLAY"] = ":0"
 print(f"   – DISPLAY set to {os.environ['DISPLAY']}")
@@ -28,13 +25,10 @@ os.makedirs(args.xdg_runtime_dir, exist_ok=True)
 os.environ["XDG_RUNTIME_DIR"] = args.xdg_runtime_dir
 print(f"2) XDG_RUNTIME_DIR set to {args.xdg_runtime_dir}")
 
-# ---- 3) Imported threading, socket, time, and OpenCV ----
 print("3) Imported threading, socket, time, and OpenCV")
 
-# ---- 4) Imported Ultralytics YOLOv8 API ----
 print("4) Imported Ultralytics YOLOv8 API")
 
-# ---- 5) Tello UDP Setup ----
 TELLO_IP = "192.168.10.1"
 TELLO_CMD_PORT = 8889
 COMMAND_ADDRESS = (TELLO_IP, TELLO_CMD_PORT)
@@ -49,13 +43,11 @@ state_sock.bind(("", 8890))
 print("7) Bound state socket on port 8890")
 
 def send_command(cmd: str):
-    """Send a single command to the Tello."""
     print(f" → Sending: {cmd}")
     cmd_sock.sendto(cmd.encode("utf-8"), COMMAND_ADDRESS)
-    time.sleep(0.05)  # small pause for command reliability
+    time.sleep(0.05) 
 
 def state_receiver():
-    """Continuously receive and print Tello state messages."""
     print("8) State receiver thread started")
     while True:
         try:
@@ -65,21 +57,15 @@ def state_receiver():
             print("   State error:", e)
             break
 
-# ---- 9) Video + Detection Thread with Separate Capture ----
-
-# Shared state between capture and inference/display
 _frame_lock = threading.Lock()
 _latest_frame = None
 _stop_event = threading.Event()
 
 def capture_thread(cap):
-    """Constantly grab the latest frame and drop stale ones."""
     global _latest_frame
     print("10) Capture thread started")
-    # ensure minimal internal buffer
     cap.set(cv2.CAP_PROP_BUFFERSIZE, 1)
     while not _stop_event.is_set():
-        # drop any queued frames, keeping only the freshest
         cap.grab()
         ret, frame = cap.read()
         if not ret:
@@ -89,7 +75,6 @@ def capture_thread(cap):
     print("11) Capture thread exiting")
 
 def inference_thread(model):
-    """Take the freshest frame, run YOLO and display it."""
     print("12) Inference/display thread started")
     cv2.namedWindow("Tello YOLOv8", cv2.WINDOW_NORMAL)
     while not _stop_event.is_set():
@@ -102,7 +87,6 @@ def inference_thread(model):
         annotated = results[0].plot()
 
         cv2.imshow("Tello YOLOv8", annotated)
-        # 1 ms wait just to process GUI events; no sleeping
         if cv2.waitKey(1) & 0xFF == ord("q"):
             print("    'q' pressed; exiting video")
             _stop_event.set()
@@ -128,13 +112,11 @@ def video_thread():
         attempts += 1
         time.sleep(3)
 
-    # start capture + inference threads
     t_cap = threading.Thread(target=capture_thread, args=(cap,), daemon=True)
     t_inf = threading.Thread(target=inference_thread, args=(model,), daemon=True)
     t_cap.start()
     t_inf.start()
 
-    # wait for stop event
     while not _stop_event.is_set():
         time.sleep(0.1)
 
